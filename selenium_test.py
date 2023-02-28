@@ -6,6 +6,70 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 
+def get_submission():
+    # Can get student id from url:
+    # https://canvas.hull.ac.uk/courses/65765/gradebook/speed_grader?assignment_id=211938&student_id=183296
+    url=driver.current_url
+    eqpos = url.rfind('=')
+    student_id=url[eqpos+1:]
+    print(f'Student id is {student_id}')
+
+    # <span class="ui-selectmenu-item-header"> DAMI AKINTOMIDE </span>
+
+    element_present = EC.presence_of_element_located((By.CLASS_NAME, 'ui-selectmenu-item-header'))
+    WebDriverWait(driver, timeout).until(element_present)
+    sname=driver.find_element(by=By.CLASS_NAME,value="ui-selectmenu-item-header")
+    student_name=sname.text
+    print(student_name)
+    
+    # The stuff of interest is inside an iframe, which must be selected
+    # <iframe id="speedgrader_iframe" src="/courses/65765/assignments/211938/submissions/182356?preview=true" frameborder="0" allowfullscreen="true"></iframe>
+
+    try:
+        # <div id="this_student_does_not_have_a_submission">
+        element_present = EC.visibility_of_element_located((By.ID, 'this_student_does_not_have_a_submission'))
+        WebDriverWait(driver, 5).until(element_present)
+        print('No submission')
+        return student_id,student_name,'No submission',None
+    except TimeoutException:
+        print('Submission present')
+
+    try:
+        element_present = EC.presence_of_element_located((By.ID, 'speedgrader_iframe'))
+        WebDriverWait(driver, timeout).until(element_present)
+        print('Found iframe')
+    except TimeoutException:
+        print("Timed out waiting for iframe to load")
+        return student_id,student_name,'Timeout fail',None
+
+
+    iframe=driver.find_element(by=By.ID, value="speedgrader_iframe")
+    driver.switch_to.frame(iframe)
+    question1 = driver.find_element(by=By.ID, value="question_466010")
+    answer1item=question1.find_element(by=By.CLASS_NAME, value="quiz_response_text")
+    answer1=answer1item.text
+
+    question2 = driver.find_element(by=By.ID, value="question_466011")
+    answer2item=question2.find_element(by=By.CLASS_NAME, value="quiz_response_text")
+    answer2=answer2item.text
+
+    #input('Press enter to continue: ')
+    driver.switch_to.default_content()
+    return student_id,student_name,answer1,answer2
+
+def next():
+    try:
+        element_present = EC.element_to_be_clickable((By.ID, 'next-student-button'))
+        WebDriverWait(driver, timeout).until(element_present)
+        print('Found next button')
+    except TimeoutException:
+        print("Timed out waiting for page to load")
+        return
+
+    navbutton = driver.find_element(by=By.ID, value="next-student-button")
+    navbutton.click()
+
+
 timeout = 10
 
 service = Service(executable_path="/drivers/edge")
@@ -13,61 +77,20 @@ driver = webdriver.Edge(service=service)
 driver.maximize_window()
 
 driver.get("https://canvas.hull.ac.uk/courses/65765/gradebook/speed_grader?assignment_id=211938&student_id=182356")
+submissions={}
 
-#input('Press enter to continue: ')
+finished=False
+while finished==False:
+    (student_id,student_name,title,desc) = get_submission()
+    if student_id in submissions:
+        finished=True
+    else:
+        submissions[student_id]={'name':student_name,'title':title,'desc':desc}
+        next()
 
-# The stuff of interest is inside an iframe, which must be selected
-# <iframe id="speedgrader_iframe" src="/courses/65765/assignments/211938/submissions/182356?preview=true" frameborder="0" allowfullscreen="true"></iframe>
-
-try:
-    element_present = EC.presence_of_element_located((By.ID, 'speedgrader_iframe'))
-    WebDriverWait(driver, timeout).until(element_present)
-except TimeoutException:
-    print("Timed out waiting for page to load")
-
-
-iframe=driver.find_element(by=By.ID, value="speedgrader_iframe")
-driver.switch_to.frame(iframe)
-question1 = driver.find_element(by=By.ID, value="question_466010")
-answer1=question1.find_element(by=By.CLASS_NAME, value="quiz_response_text")
-print(answer1.text)
-
-question2 = driver.find_element(by=By.ID, value="question_466011")
-answer2=question2.find_element(by=By.CLASS_NAME, value="quiz_response_text")
-print(answer2.text)
-
-#input('Press enter to continue: ')
-
-
-driver.switch_to.default_content()
-
-try:
-    element_present = EC.presence_of_element_located((By.ID, 'next-student-button'))
-    WebDriverWait(driver, timeout).until(element_present)
-except TimeoutException:
-    print("Timed out waiting for page to load")
-
-navbutton = driver.find_element(by=By.ID, value="next-student-button")
-print(navbutton.id)
-print(driver.current_url)
-
-# Note that when the window opens, it may not be big enough to show the button.
-# Selenium can't click a non-visible button.  So the window must be resized first.
-button = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, 'next-student-button')))
-button.click()
-
-print(driver.current_url)
-
-button = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, 'next-student-button')))
-button.click()
-
-button = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, 'next-student-button')))
-print(driver.current_url)
-
-
-input('Press enter to continue: ')
-
-#
-# <button id="next-student-button" class="Button Button--icon-action gradebookMoveToNext next" type="button" aria-label="Next">
-#            <i class="icon-arrow-right next" aria-hidden="true"></i>
-#          </button>
+with open('output.md','w') as outfile:
+    for key,value in submissions.items():
+        outfile.write(f'# {key} {value["name"]}\n\n')
+        outfile.write(f'## {value["title"]}\n\n')
+        outfile.write(f'{value["desc"]}\n\n')
+    

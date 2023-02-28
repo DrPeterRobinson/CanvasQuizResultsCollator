@@ -130,3 +130,5 @@ dmypy.json
 
 # Web browser drivers
 /drivers/
+
+output.md
