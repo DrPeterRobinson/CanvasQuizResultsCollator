@@ -5,7 +5,6 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-
 def get_submission():
     # Can get student id from url:
     # https://canvas.hull.ac.uk/courses/65765/gradebook/speed_grader?assignment_id=211938&student_id=183296
@@ -28,9 +27,9 @@ def get_submission():
     try:
         # <div id="this_student_does_not_have_a_submission">
         element_present = EC.visibility_of_element_located((By.ID, 'this_student_does_not_have_a_submission'))
-        WebDriverWait(driver, 5).until(element_present)
+        WebDriverWait(driver, 4).until(element_present)
         print('No submission')
-        return student_id,student_name,'No submission',None
+        return student_id,student_name,'No submission',None,None
     except TimeoutException:
         print('Submission present')
 
@@ -40,7 +39,7 @@ def get_submission():
         print('Found iframe')
     except TimeoutException:
         print("Timed out waiting for iframe to load")
-        return student_id,student_name,'Timeout fail',None
+        return student_id,student_name,'Timeout fail',None,None
 
 
     iframe=driver.find_element(by=By.ID, value="speedgrader_iframe")
@@ -51,11 +50,15 @@ def get_submission():
 
     question2 = driver.find_element(by=By.ID, value="question_466011")
     answer2item=question2.find_element(by=By.CLASS_NAME, value="quiz_response_text")
-    answer2=answer2item.text
+    answer2=answer2item.text.replace('\n','\n\n')
+
+    question3 = driver.find_element(by=By.ID, value="question_466406")
+    answer3item=question2.find_element(by=By.CLASS_NAME, value="quiz_response_text")
+    answer3=answer3item.text.replace('\n','\n\n')
 
     #input('Press enter to continue: ')
     driver.switch_to.default_content()
-    return student_id,student_name,answer1,answer2
+    return student_id,student_name,answer1,answer2,answer3
 
 def next():
     try:
@@ -70,6 +73,15 @@ def next():
     navbutton.click()
 
 
+# name1,name2,canvas_id,student_id
+import csv
+
+sids = {}
+with open('student_lookup.csv', newline='') as studentfile:
+    reader = csv.DictReader(studentfile)
+    for row in reader:
+        sids[row['canvas_id']] = row['student_id']
+
 timeout = 10
 
 service = Service(executable_path="/drivers/edge")
@@ -80,17 +92,30 @@ driver.get("https://canvas.hull.ac.uk/courses/65765/gradebook/speed_grader?assig
 submissions={}
 
 finished=False
+testcount=0
 while finished==False:
-    (student_id,student_name,title,desc) = get_submission()
+    (student_id,student_name,title,desc,comments) = get_submission()
     if student_id in submissions:
         finished=True
     else:
-        submissions[student_id]={'name':student_name,'title':title,'desc':desc}
+        submissions[student_id]={'name':student_name,'title':title,'desc':desc,'comments':comments}
         next()
+    testcount=testcount+1
+    if testcount==100:
+        finished=True
 
-with open('output.md','w') as outfile:
+
+
+
+with open('output.md','w',encoding='utf-8') as outfile:
     for key,value in submissions.items():
-        outfile.write(f'# {key} {value["name"]}\n\n')
+        if key in sids.keys():
+            sid = sids[key]
+        else:
+            sid = key
+        outfile.write(f'# {sid} {value["name"]}\n\n')
         outfile.write(f'## {value["title"]}\n\n')
         outfile.write(f'{value["desc"]}\n\n')
+        outfile.write(f'{value["comments"]}\n\n')
+        outfile.write('\n---\n\n')
     
